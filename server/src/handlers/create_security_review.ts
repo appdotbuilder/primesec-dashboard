@@ -1,23 +1,53 @@
+import { db } from '../db';
+import { securityReviewsTable, usersTable, containersTable } from '../db/schema';
 import { type CreateSecurityReviewInput, type SecurityReview } from '../schema';
+import { eq } from 'drizzle-orm';
 
-export async function createSecurityReview(input: CreateSecurityReviewInput): Promise<SecurityReview> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is creating a new security review for document analysis.
-    // Should handle document upload, trigger AI analysis pipeline, and store analysis results.
-    return Promise.resolve({
-        id: 0, // Placeholder ID
+export const createSecurityReview = async (input: CreateSecurityReviewInput): Promise<SecurityReview> => {
+  try {
+    // Verify that the creator exists
+    const creator = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.id, input.created_by))
+      .execute();
+
+    if (creator.length === 0) {
+      throw new Error(`User with id ${input.created_by} does not exist`);
+    }
+
+    // Verify container exists if provided
+    if (input.container_id) {
+      const container = await db.select()
+        .from(containersTable)
+        .where(eq(containersTable.id, input.container_id))
+        .execute();
+
+      if (container.length === 0) {
+        throw new Error(`Container with id ${input.container_id} does not exist`);
+      }
+    }
+
+    // Insert security review record
+    const result = await db.insert(securityReviewsTable)
+      .values({
         title: input.title,
         description: input.description,
         document_name: input.document_name,
         document_url: input.document_url,
         document_type: input.document_type,
-        status: 'Pending',
-        ai_analysis_complete: false,
-        ai_analysis_results: null,
         container_id: input.container_id,
-        reviewer_id: null,
         created_by: input.created_by,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as SecurityReview);
-}
+        status: 'Pending', // Default status
+        ai_analysis_complete: false, // Default value
+        ai_analysis_results: null, // Default value
+        reviewer_id: null // Default value
+      })
+      .returning()
+      .execute();
+
+    return result[0];
+  } catch (error) {
+    console.error('Security review creation failed:', error);
+    throw error;
+  }
+};
